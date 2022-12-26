@@ -1,0 +1,2 @@
+1): change video resolution
+2): change FPS of interval sending frames
