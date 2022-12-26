@@ -101,7 +101,7 @@
 $( document ).ready(function() {
     const url = 'http://127.0.0.1:5000'
 
-    var socket = io(`${url}`);
+    var socket = io.connect(`${url}`);
     // var socket = io('ws://127.0.0.1:5000');
 
     socket.on('connect', function(){
@@ -121,7 +121,7 @@ $( document ).ready(function() {
             video.play();
 
 			// see if this work
-			socket.emit('video_stream', stream);
+			// socket.emit('video_stream', stream);
         })
         .catch(function (err0r) {
             console.log(err0r)

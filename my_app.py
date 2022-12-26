@@ -49,13 +49,11 @@ drowsiness_value = -1
 drowsiness_val_submitted = 0
 rec = 0
 
-
 def euclidean_distance(point1, point2):
     x1, y1 = point1
     x2, y2 = point2
     dis = math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
     return dis
-
 
 def eyeAspectRatio(Eye):
     # lets calculate individual euclidean distances
@@ -66,13 +64,11 @@ def eyeAspectRatio(Eye):
 
     return EAR
 
-
 def random_number():
-    return random.randint(200, 5000)
+    return random.randint(200, 2000)
 
 @celery.task(name="task.message")
-def save_frames(data_image, Num_Frame, display_alert, drowsiness_value, drowsiness_val_submitted, random_alert_frames, panda_EAR_json, initial_EAR, initial_mean, initial_sd, original_time, EAR_data):
-    # global rec, display_alert, p, detector, predictor, drowsiness_value, drowsiness_val_submitted, random_alert_frames, panda_EAR, EAR_data, initial_EAR, initial_mean, initial_sd, original_time
+def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, initial_sd):
 
     sbuf = StringIO()
     sbuf.write(data_image)
@@ -91,16 +87,10 @@ def save_frames(data_image, Num_Frame, display_alert, drowsiness_value, drowsine
     detector = dlib.get_frontal_face_detector()
     predictor = dlib.shape_predictor(p)
 
-    panda_EAR = pd.read_json(panda_EAR_json)
-
     now_time = time.perf_counter()  # used to measure time
     elapsed_time_secs = now_time - original_time
 
     if image.any():
-        # print("====================== inside image.any() ====================")
-        print(image[0][0])
-        Num_Frame = Num_Frame + 1  # For frame rate measurement
-
         # getting height and width
         h, w, _ = image.shape
 
@@ -112,37 +102,25 @@ def save_frames(data_image, Num_Frame, display_alert, drowsiness_value, drowsine
 
         # Ignore frames which has no detected face
         if len(rects) == 0:
-            print("====================== inside rects ====================")
             EAR_data.append((Num_Frame, None, elapsed_time_secs, 'Undefined'))
-            # continue
 
         # For each detected face, find the landmark.
         for (i, rect) in enumerate(rects):
-            print("====================== inside enumerate ====================")
             # Make the prediction and transfom it to numpy array
             shape = predictor(gray, rect)
             shape = face_utils.shape_to_np(shape)
 
             # we now store the shapes from 36--41 (inclusive) for left eye
             leftEye = [shape[36], shape[37], shape[38], shape[39], shape[40], shape[41]]
-
             # right eye shapes from 41--47
             rightEye = [shape[42], shape[43], shape[44], shape[45], shape[46], shape[47]]
             left_EAR = eyeAspectRatio(leftEye)
             right_EAR = eyeAspectRatio(rightEye)
             average_EAR = round((left_EAR + right_EAR) / 2, 2)
 
-            if Num_Frame <= 50:
-                initial_EAR.append(average_EAR)
-            if Num_Frame == 50:
-                # mean and sd
-                initial_mean = statistics.mean(initial_EAR)
-                initial_sd = statistics.stdev(initial_EAR)
-                # Blink_Status records if there was a blink or not
-
             Blink_Status = 'Undefined'
 
-            if Num_Frame > 50:
+            if Num_Frame > 60:
                 if average_EAR < initial_mean - 2 * initial_sd:
                     x1 = int(w / 2) - 20
                     Blink_Status = 'Blink'
@@ -152,29 +130,6 @@ def save_frames(data_image, Num_Frame, display_alert, drowsiness_value, drowsine
             EAR_data.append((Num_Frame, average_EAR, elapsed_time_secs, Blink_Status))
             print(EAR_data)
 
-            # panda_EAR = pd.concat([panda_EAR, pd.DataFrame.from_records([{
-            #     'Frame Number': Num_Frame, 'Average EAR': average_EAR,
-            #     'Elapsed Time': elapsed_time_secs,
-            #     'Response': Blink_Status, 'Actual Output': drowsiness_value}
-            # ])], ignore_index=True)
-
-            # # Remove the drowsiness_value after adding once
-            # if drowsiness_value:
-            #     drowsiness_value = -1
-
-            # if drowsiness_val_submitted == 1:
-            #     display_alert = 0
-            #     drowsiness_val_submitted = 0
-
-            # if Num_Frame > 200:
-            #     # randomly sending 5 alerts
-            #     print("Num_Frame: ", Num_Frame)
-            #     if Num_Frame in random_alert_frames:
-            #         print("================= Frame Matched ===================")
-            #         print(Num_Frame)
-            #         if drowsiness_val_submitted == 0:
-            #             print("drowsiness_val_submitted: ", drowsiness_val_submitted)
-            #             display_alert = 1
             return EAR_data
 
 
@@ -198,8 +153,6 @@ def detect_landmarks(image):
     Num_Frame = 0
 
     while True:
-        # print("================== rec ======================")
-        # print(rec)
 
         if not rec:
             now = datetime.datetime.now()
@@ -339,16 +292,12 @@ def index():
 @cross_origin(supports_credentials=True)
 def requests():
     global rec
-    print("======================= Before Recording Value =========================================")
-    print(rec)
     rec = not rec
-    print("======================= Before Recording Value =========================================")
-    print(rec)
 
     global random_alert_frames, panda_EAR, EAR_data, initial_EAR, initial_mean, initial_sd, original_time, Num_Frame
 
     if rec:
-        random_alert_frames = [random_number(), random_number(), random_number(), random_number(), random_number()]
+        random_alert_frames = [random_number(), random_number(), random_number(), random_number(), random_number(), random_number(), random_number(), random_number(), random_number(), random_number()]
         print("============random_alert_frames=============")
         print(random_alert_frames)
 
@@ -364,6 +313,8 @@ def requests():
         # To measure frame rate
         Num_Frame = 0
     else:
+        print("============ Rec Stopped =============")
+        # print(panda_EAR)
         now = datetime.datetime.now()
         panda_EAR.to_csv('panda_EAR_{}.csv'.format(str(now).replace(":", '')))
 
@@ -446,97 +397,50 @@ def image(data_image):
 
     if rec:
         print("=================== REC is TRUE ===========================")
-        # save_frames.delay(image)
-        # Convert from type DataFrame to JSON
-        # print("================ panda_EAR before ====================")
-        # print(panda_EAR)
-        panda_EAR_json = panda_EAR.to_json()
-        # print("================ panda_EAR after ====================")
-        # print(panda_EAR)
-        result = save_frames.delay(data_image, Num_Frame, display_alert, drowsiness_value, drowsiness_val_submitted, random_alert_frames, panda_EAR_json, initial_EAR, initial_mean, initial_sd, original_time, EAR_data)
-        print("======================= Before result.get() ==================================")
-        print(result.get())
+
+        Num_Frame += 1
+        result = save_frames.delay(data_image, Num_Frame, original_time, EAR_data, initial_mean, initial_sd)
+        # print("======================= Before result.get() ==================================")
+        # print(result.get())
         EAR_data_returned = result.get()
 
-        # panda_EAR = pd.concat([panda_EAR, pd.DataFrame.from_records([{
-        #     'Frame Number': Num_Frame, 'Average EAR': average_EAR,
-        #     'Elapsed Time': elapsed_time_secs,
-        #     'Response': Blink_Status, 'Actual Output': drowsiness_value}
-        # ])], ignore_index=True)
+        if Num_Frame <= 50:
+                print("====================== Num_Frame <= 50 ====================")
+                initial_EAR.append(EAR_data_returned[0][1])
 
-        # update Num_Frame
-        Num_Frame = EAR_data_returned[0][0] + 1
+        if Num_Frame == 50:
+            print("====================== Num_Frame == 50 ====================")
+            # mean and sd
+            initial_mean = statistics.mean(initial_EAR)
+            initial_sd = statistics.stdev(initial_EAR)
 
         # Remove the drowsiness_value after adding once
-        # if drowsiness_value:
-        #     drowsiness_value = -1
+        if drowsiness_value:
+            drowsiness_value = -1
 
-        # if drowsiness_val_submitted == 1:
-        #     display_alert = 0
-        #     drowsiness_val_submitted = 0
+        if drowsiness_val_submitted == 1:
+            display_alert = 0
+            drowsiness_val_submitted = 0
 
-        # if Num_Frame > 200:
-        #     # randomly sending 5 alerts
-        #     print("Num_Frame: ", Num_Frame)
-        #     if Num_Frame in random_alert_frames:
-        #         print("================= Frame Matched ===================")
-        #         print(Num_Frame)
-        #         if drowsiness_val_submitted == 0:
-        #             print("drowsiness_val_submitted: ", drowsiness_val_submitted)
-        #             display_alert = 1
-        print("======================= After result.get() ===================================")
+        if Num_Frame > 200:
+            # randomly sending 5 alerts
+            print("Num_Frame: ", Num_Frame)
+            if Num_Frame in random_alert_frames:
+                print("================= Frame Matched ===================")
+                print(Num_Frame)
+                if drowsiness_val_submitted == 0:
+                    print("drowsiness_val_submitted: ", drowsiness_val_submitted)
+                    display_alert = 1
 
-    return "success"
+        panda_EAR = pd.concat([panda_EAR, pd.DataFrame.from_records([{
+            'Frame Number': EAR_data_returned[0][0], 'Average EAR': EAR_data_returned[0][1],
+            'Elapsed Time': EAR_data_returned[0][2],
+            'Response': EAR_data_returned[0][3], 'Actual Output': drowsiness_value}
+        ])], ignore_index=True)
 
-
-@socketio.on('video_stream')
-@cross_origin(supports_credentials=True)
-def video_stream(data_image):
-    global rec, display_alert, p, detector, predictor, drowsiness_value, drowsiness_val_submitted, random_alert_frames, panda_EAR, EAR_data, initial_EAR, initial_mean, initial_sd, original_time, Num_Frame
-
-    print("Getting Frames")
-
-    sbuf = StringIO()
-    sbuf.write(data_image)
-
-    # decode and convert into image
-    b = io.BytesIO(base64.b64decode(data_image))
-    pimg = Image.open(b)
-
-    # converting RGB to BGR, as opencv standards
-    image = cv2.cvtColor(np.array(pimg), cv2.COLOR_RGB2BGR)
-
-    # print('=============== frame ================')
-    # print(image[0][0])
-
-    if rec:
-        print("=================== REC is TRUE ===========================")
-        # save_frames.delay(image)
-        # Convert from type DataFrame to JSON
-        # print("================ panda_EAR before ====================")
-        # print(panda_EAR)
-        panda_EAR_json = panda_EAR.to_json()
-        # print("================ panda_EAR after ====================")
-        # print(panda_EAR)
-        result = save_frames.delay(data_image, Num_Frame, display_alert, drowsiness_value, drowsiness_val_submitted, random_alert_frames, panda_EAR_json, initial_EAR, initial_mean, initial_sd, original_time, EAR_data)
-        print("======================= Before result.get() ==================================")
-        print(result.get())
-        EAR_data_returned = result.get()
-
-        Num_Frame = EAR_data_returned[0][0] + 1
-
-        print("======================= After result.get() ===================================")
+        # print("======================= After result.get() ===================================")
 
     return "success"
-
-
-@socketio.on('connection')
-@cross_origin(supports_credentials=True)
-def connect():
-    print("======================== Socket connected ========================")
-
-    return "success"
-
 
 if __name__ == '__main__':
     # socketio.run(app, host='127.0.0.1')
