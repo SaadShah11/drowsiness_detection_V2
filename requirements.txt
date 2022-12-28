@@ -1,0 +1,10 @@
+flask
+flask_cors
+numpy
+pandas
+matplotlib
+imutils
+opencv-python
+flask_celery
+celery
+flask_socketio

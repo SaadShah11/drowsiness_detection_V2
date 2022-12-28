@@ -1,2 +1,9 @@
 1): change video resolution
 2): change FPS of interval sending frames
+
+make new class with the global variables as properties
+make new object for each new socketID
+add new object to global map with socketID as key
+load the object from map according to the socket that is calling it 
+
+load the model globally then use in celery task
