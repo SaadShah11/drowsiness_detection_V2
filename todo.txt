@@ -6,4 +6,6 @@ make new object for each new socketID
 add new object to global map with socketID as key
 load the object from map according to the socket that is calling it 
 
+run the landmark button with sockets 
+
 load the model globally then use in celery task
