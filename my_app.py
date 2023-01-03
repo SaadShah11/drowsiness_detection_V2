@@ -21,7 +21,6 @@ import statistics
 from flask_cors import CORS, cross_origin
 import datetime, time
 import User
-import pickle
 # import urllib.parse
 # import os
 # from threading import Thread
@@ -75,31 +74,9 @@ def eyeAspectRatio(Eye):
 def random_number():
     return random.randint(200, 2000)
 
-# def get_detector(var1, var2):
-#     global detector
-#     print('================ get_detector =============')
-#     return detector(var1, var2)
-
-# def get_predictor(var1, var2):
-#     global predictor
-#     print('================ get_predictor =============')
-#     return predictor(var1, var2)
-
 @celery.task(name="task.message")
 def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, initial_sd, currentSocketID):
-# def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, initial_sd, currentSocketID, obj_encoded, obj_encoded1):
-# def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, initial_sd, instance):
-
-    # Decode the base64 encoded string
-    # obj_serialized = base64.b64decode(obj_encoded.encode('utf-8'))
-    # Deserialize the object
-    # currentUser = pickle.loads(obj_serialized)
-
-    # obj_serialized = base64.b64decode(obj_encoded.encode('utf-8'))
-    # detector = pickle.loads(obj_serialized)
-
-    # obj_serialized1 = base64.b64decode(obj_encoded1.encode('utf-8'))
-    # predictor = pickle.loads(obj_serialized1)
+    global detector, predictor
 
     sbuf = StringIO()
     sbuf.write(data_image)
@@ -114,16 +91,9 @@ def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, in
     print(f"Frame#  {Num_Frame}")
 
     # Load All Models
-    p = "shape_predictor_68_face_landmarks.dat"
-    detector = dlib.get_frontal_face_detector()
-    predictor = dlib.shape_predictor(p)
-
-    # currentUser = User.objects.get(id=instance)
-    # print('== currentSocketID ==')
-    # print(currentSocketID)
-
-    # print('=========== currentUser ===========')
-    # print(currentUser)
+    # p = "shape_predictor_68_face_landmarks.dat"
+    # detector = dlib.get_frontal_face_detector()
+    # predictor = dlib.shape_predictor(p)
 
     now_time = time.perf_counter()  # used to measure time
     elapsed_time_secs = now_time - original_time
@@ -137,9 +107,7 @@ def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, in
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         # Get faces into webcam's image
-        # rects = currentUser.detector(gray, 0)
         rects = detector(gray, 0)
-        # rects = get_detector(gray, 0)
 
         print(len(rects))
 
@@ -150,9 +118,7 @@ def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, in
         # For each detected face, find the landmark.
         for (i, rect) in enumerate(rects):
             # Make the prediction and transfom it to numpy array
-            # shape = currentUser.predictor(gray, rect)
             shape = predictor(gray, rect)
-            # shape = get_predictor(gray, rect)
             shape = face_utils.shape_to_np(shape)
 
             # we now store the shapes from 36--41 (inclusive) for left eye
@@ -183,13 +149,6 @@ def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, in
 @app.route('/', methods=['POST', 'GET'])
 @cross_origin(supports_credentials=True)
 def index():
-    # global p, detector, predictor
-
-    # Load All Models
-    # p = "shape_predictor_68_face_landmarks.dat"
-    # detector = dlib.get_frontal_face_detector()
-    # predictor = dlib.shape_predictor(p)
-
     return render_template('index.html')
 
 
@@ -198,16 +157,10 @@ def index():
 @cross_origin(supports_credentials=True)
 def requests():
     global users
-    # Perform this route using socket connection
-    currentSocketID = request.args.get('socketID')
-    
-    # global rec
-    # rec = not rec
 
-    # global random_alert_frames, panda_EAR, EAR_data, initial_EAR, initial_mean, initial_sd, original_time, Num_Frame
+    currentSocketID = request.args.get('socketID')
 
     # Get current socketID
-    # currentSocketID = str(request.sid)
     currentUser = users[currentSocketID]
     print('================== currentSocketID =================')
     print(currentSocketID)
@@ -219,9 +172,6 @@ def requests():
         random_alert_frames = [random_number(), random_number(), random_number(), random_number(), random_number(), random_number(), random_number(), random_number(), random_number(), random_number()]
         print("============random_alert_frames=============")
         print(random_alert_frames)
-
-        # Setting random_alert_frames for user
-        # currentUser.random_alert_frames(random_alert_frames)
 
         panda_EAR = pd.DataFrame(columns=['Frame Number', 'Average EAR', 'Elapsed Time', 'Response', 'Actual Output'])
         print("================ panda_EAR initialized ====================")
@@ -320,7 +270,6 @@ def fetch_drowsiness_alert_values():
 @socketio.on('image')
 @cross_origin(supports_credentials=True)
 def image(data_image):
-    # global rec, display_alert, p, detector, predictor, drowsiness_value, drowsiness_val_submitted, random_alert_frames, panda_EAR, EAR_data, initial_EAR, initial_mean, initial_sd, original_time, Num_Frame
     global users
     # print("Getting Frames")
 
@@ -329,8 +278,6 @@ def image(data_image):
     currentUser = users[currentSocketID]
     # print('================== currentSocketID =================')
     # print(currentSocketID)
-
-    # print(currentUser.rec)
 
     sbuf = StringIO()
     sbuf.write(data_image)
@@ -342,31 +289,13 @@ def image(data_image):
     # converting RGB to BGR, as opencv standards
     image = cv2.cvtColor(np.array(pimg), cv2.COLOR_RGB2BGR)
 
-    # print('=============== frame ================')
-    # print(image[0][0])
-    # userMemoryId = pickle.dumps(currentUser)
     if currentUser.rec:
         # print("=================== REC is TRUE ===========================")
 
-        # model_serialized = pickle.dumps(detector)
-        # obj_encoded = base64.b64encode(model_serialized).decode('utf-8')
-
-        # model_serialized1 = pickle.dumps(predictor)
-        # obj_encoded1 = base64.b64encode(model_serialized1).decode('utf-8')
-
-        # obj_serialized = pickle.dumps(currentUser)
-        # obj_encoded = base64.b64encode(obj_serialized).decode('utf-8')
-
         currentUser.Num_Frame += 1
         result = save_frames.delay(data_image, currentUser.Num_Frame, currentUser.original_time, currentUser.EAR_data, currentUser.initial_mean, currentUser.initial_sd, currentSocketID)
-        # result = save_frames.delay(data_image, currentUser.Num_Frame, currentUser.original_time, currentUser.EAR_data, currentUser.initial_mean, currentUser.initial_sd, currentSocketID, obj_encoded, obj_encoded1)
-        # result = save_frames.delay(data_image, currentUser.Num_Frame, currentUser.original_time, currentUser.EAR_data, currentUser.initial_mean, currentUser.initial_sd, currentUser.id)
-        
-        # print("======================= Before result.get() ==================================")
-        # print(result.get())
 
         EAR_data_returned = result.get()
-
         # print("====================== EAR_data_returned ====================")
         print(EAR_data_returned)
 
@@ -378,7 +307,6 @@ def image(data_image):
             if currentUser.Num_Frame == 50:
                 # print("====================== Num_Frame == 50 ====================")
                 # mean and sd
-                print()
                 currentUser.initial_mean = statistics.mean(currentUser.initial_EAR)
                 currentUser.initial_sd = statistics.stdev(currentUser.initial_EAR)
 
@@ -392,7 +320,7 @@ def image(data_image):
 
             if currentUser.Num_Frame > 200:
                 # randomly sending 5 alerts
-                print("Num_Frame: ", currentUser.Num_Frame)
+                # print("Num_Frame: ", currentUser.Num_Frame)
                 if currentUser.Num_Frame in currentUser.random_alert_frames:
                     print("================= Frame Matched ===================")
                     print(currentUser.Num_Frame)
@@ -406,18 +334,12 @@ def image(data_image):
                 'Response': EAR_data_returned[0][3], 'Actual Output': drowsiness_value}
             ])], ignore_index=True)
 
-        # print("=================== panda_EAR ================")
-        # print(panda_EAR)
-        # print("======================= After result.get() ===================================")
-
     return "success"
 
 @socketio.on('connect')
 @cross_origin(supports_credentials=True)
 def connect():
     global users
-
-    # currentSocketID = request.namespace.socket.sessid
     currentSocketID = str(request.sid)
     print("================= SOCKET ID ==================")
     print(currentSocketID)
