@@ -21,7 +21,7 @@ import statistics
 from flask_cors import CORS, cross_origin
 import datetime, time
 import User
-
+import pickle
 # import urllib.parse
 # import os
 # from threading import Thread
@@ -36,7 +36,7 @@ app.config['CELERY_RESULT_BACKEND'] = 'rpc://'
 # Get latest port from redis and add in socketio
 # global port = 
 # socketio = SocketIO(app, cors_allowed_origins="*", message_queue='redis://')
-socketio = SocketIO(app, cors_allowed_origins="*", message_queue='amqp://')
+socketio = SocketIO(app, cors_allowed_origins="*", message_queue='amqp://', async_mode='threading')
 # socketio = SocketIO(app, cors_allowed_origins="*")
 
 # celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
@@ -86,7 +86,20 @@ def random_number():
 #     return predictor(var1, var2)
 
 @celery.task(name="task.message")
-def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, initial_sd):
+def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, initial_sd, currentSocketID):
+# def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, initial_sd, currentSocketID, obj_encoded, obj_encoded1):
+# def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, initial_sd, instance):
+
+    # Decode the base64 encoded string
+    # obj_serialized = base64.b64decode(obj_encoded.encode('utf-8'))
+    # Deserialize the object
+    # currentUser = pickle.loads(obj_serialized)
+
+    # obj_serialized = base64.b64decode(obj_encoded.encode('utf-8'))
+    # detector = pickle.loads(obj_serialized)
+
+    # obj_serialized1 = base64.b64decode(obj_encoded1.encode('utf-8'))
+    # predictor = pickle.loads(obj_serialized1)
 
     sbuf = StringIO()
     sbuf.write(data_image)
@@ -98,17 +111,25 @@ def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, in
     # converting RGB to BGR, as opencv standards
     image = cv2.cvtColor(np.array(pimg), cv2.COLOR_RGB2BGR)
 
-    print("Frame# ", Num_Frame)
+    print(f"Frame#  {Num_Frame}")
 
     # Load All Models
     p = "shape_predictor_68_face_landmarks.dat"
     detector = dlib.get_frontal_face_detector()
     predictor = dlib.shape_predictor(p)
 
+    # currentUser = User.objects.get(id=instance)
+    # print('== currentSocketID ==')
+    # print(currentSocketID)
+
+    # print('=========== currentUser ===========')
+    # print(currentUser)
+
     now_time = time.perf_counter()  # used to measure time
     elapsed_time_secs = now_time - original_time
 
     if image.any():
+        # print("============ image.any() =============")
         # getting height and width
         h, w, _ = image.shape
 
@@ -116,8 +137,11 @@ def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, in
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         # Get faces into webcam's image
+        # rects = currentUser.detector(gray, 0)
         rects = detector(gray, 0)
         # rects = get_detector(gray, 0)
+
+        print(len(rects))
 
         # Ignore frames which has no detected face
         if len(rects) == 0:
@@ -126,6 +150,7 @@ def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, in
         # For each detected face, find the landmark.
         for (i, rect) in enumerate(rects):
             # Make the prediction and transfom it to numpy array
+            # shape = currentUser.predictor(gray, rect)
             shape = predictor(gray, rect)
             # shape = get_predictor(gray, rect)
             shape = face_utils.shape_to_np(shape)
@@ -147,10 +172,12 @@ def save_frames(data_image, Num_Frame, original_time, EAR_data, initial_mean, in
                 else:
                     Blink_Status = 'Not Blink'
 
-            EAR_data.append((Num_Frame, average_EAR, elapsed_time_secs, Blink_Status))
+            EAR_data.append((Num_Frame, average_EAR, elapsed_time_secs, Blink_Status, currentSocketID))
             print(EAR_data)
 
             return EAR_data
+    else:
+        return None
 
 
 @app.route('/', methods=['POST', 'GET'])
@@ -170,23 +197,31 @@ def index():
 @app.route('/requests', methods=['POST', 'GET'])
 @cross_origin(supports_credentials=True)
 def requests():
+    global users
     # Perform this route using socket connection
+    currentSocketID = request.args.get('socketID')
+    
+    # global rec
+    # rec = not rec
 
-    global rec
-    rec = not rec
-
-    global random_alert_frames, panda_EAR, EAR_data, initial_EAR, initial_mean, initial_sd, original_time, Num_Frame
+    # global random_alert_frames, panda_EAR, EAR_data, initial_EAR, initial_mean, initial_sd, original_time, Num_Frame
 
     # Get current socketID
     # currentSocketID = str(request.sid)
-    # currentUser = users[currentSocketID]
-    # print('================== currentSocketID =================')
-    # print(currentSocketID)
+    currentUser = users[currentSocketID]
+    print('================== currentSocketID =================')
+    print(currentSocketID)
 
-    if rec:
+    currentUser.rec = not currentUser.rec
+    print(currentUser.rec)
+
+    if currentUser.rec:
         random_alert_frames = [random_number(), random_number(), random_number(), random_number(), random_number(), random_number(), random_number(), random_number(), random_number(), random_number()]
         print("============random_alert_frames=============")
         print(random_alert_frames)
+
+        # Setting random_alert_frames for user
+        # currentUser.random_alert_frames(random_alert_frames)
 
         panda_EAR = pd.DataFrame(columns=['Frame Number', 'Average EAR', 'Elapsed Time', 'Response', 'Actual Output'])
         print("================ panda_EAR initialized ====================")
@@ -196,20 +231,41 @@ def requests():
         initial_mean = math.inf
         initial_sd = math.inf
         original_time = time.perf_counter()  # used to measure time
-
+        print(original_time)
         # To measure frame rate
         Num_Frame = 0
 
         # Updates these values in the user object in users dictionary
+        currentUser.random_alert_frames = random_alert_frames
+        # currentUser.rec = rec
+        currentUser.display_alert = 0
+        currentUser.drowsiness_value = 1
+        currentUser.drowsiness_val_submitted = 0
+        currentUser.initial_EAR = []
+        currentUser.EAR_data = []
+        currentUser.initial_mean = math.inf
+        currentUser.initial_sd = math.inf
+        currentUser.panda_EAR = panda_EAR
+        currentUser.original_time = original_time
+        currentUser.Num_Frame = 0
+
+        print('============== Currnet User ==============')
+        print(currentUser.rec)
     else:
         print("============ Rec Stopped =============")
         # print(panda_EAR)
 
         now = datetime.datetime.now()
-        panda_EAR.to_csv('panda_EAR_{}.csv'.format(str(now).replace(":", '')))
+        currentUser.panda_EAR.to_csv('panda_EAR_{}.csv'.format(str(now).replace(":", '')))
 
         # Delete the user object from users dictionary
         # Add new user object for current socketID again
+
+        # When user with socketID is deleted we get errors in image endpoint 
+        # del users[currentSocketID]
+
+        # print('=============== Current user deleted =================')
+        # print(users)
 
     return "success"
 
@@ -264,9 +320,17 @@ def fetch_drowsiness_alert_values():
 @socketio.on('image')
 @cross_origin(supports_credentials=True)
 def image(data_image):
-    global rec, display_alert, p, detector, predictor, drowsiness_value, drowsiness_val_submitted, random_alert_frames, panda_EAR, EAR_data, initial_EAR, initial_mean, initial_sd, original_time, Num_Frame
-
+    # global rec, display_alert, p, detector, predictor, drowsiness_value, drowsiness_val_submitted, random_alert_frames, panda_EAR, EAR_data, initial_EAR, initial_mean, initial_sd, original_time, Num_Frame
+    global users
     # print("Getting Frames")
+
+    # Get current socketID
+    currentSocketID = str(request.sid)
+    currentUser = users[currentSocketID]
+    # print('================== currentSocketID =================')
+    # print(currentSocketID)
+
+    # print(currentUser.rec)
 
     sbuf = StringIO()
     sbuf.write(data_image)
@@ -280,51 +344,63 @@ def image(data_image):
 
     # print('=============== frame ================')
     # print(image[0][0])
+    # userMemoryId = pickle.dumps(currentUser)
+    if currentUser.rec:
+        # print("=================== REC is TRUE ===========================")
 
-    if rec:
-        print("=================== REC is TRUE ===========================")
+        # model_serialized = pickle.dumps(detector)
+        # obj_encoded = base64.b64encode(model_serialized).decode('utf-8')
 
-        Num_Frame += 1
-        result = save_frames.delay(data_image, Num_Frame, original_time, EAR_data, initial_mean, initial_sd)
+        # model_serialized1 = pickle.dumps(predictor)
+        # obj_encoded1 = base64.b64encode(model_serialized1).decode('utf-8')
+
+        # obj_serialized = pickle.dumps(currentUser)
+        # obj_encoded = base64.b64encode(obj_serialized).decode('utf-8')
+
+        currentUser.Num_Frame += 1
+        result = save_frames.delay(data_image, currentUser.Num_Frame, currentUser.original_time, currentUser.EAR_data, currentUser.initial_mean, currentUser.initial_sd, currentSocketID)
+        # result = save_frames.delay(data_image, currentUser.Num_Frame, currentUser.original_time, currentUser.EAR_data, currentUser.initial_mean, currentUser.initial_sd, currentSocketID, obj_encoded, obj_encoded1)
+        # result = save_frames.delay(data_image, currentUser.Num_Frame, currentUser.original_time, currentUser.EAR_data, currentUser.initial_mean, currentUser.initial_sd, currentUser.id)
         
         # print("======================= Before result.get() ==================================")
         # print(result.get())
 
         EAR_data_returned = result.get()
-        
-        print("====================== EAR_data_returned ====================")
+
+        # print("====================== EAR_data_returned ====================")
         print(EAR_data_returned)
 
         if EAR_data_returned:
-            if Num_Frame <= 50:
-                print("====================== Num_Frame <= 50 ====================")
-                initial_EAR.append(EAR_data_returned[0][1])
+            if currentUser.Num_Frame <= 50:
+                # print("====================== Num_Frame <= 50 ====================")
+                currentUser.initial_EAR.append(EAR_data_returned[0][1])
 
-            if Num_Frame == 50:
-                print("====================== Num_Frame == 50 ====================")
+            if currentUser.Num_Frame == 50:
+                # print("====================== Num_Frame == 50 ====================")
                 # mean and sd
-                initial_mean = statistics.mean(initial_EAR)
-                initial_sd = statistics.stdev(initial_EAR)
+                print()
+                currentUser.initial_mean = statistics.mean(currentUser.initial_EAR)
+                currentUser.initial_sd = statistics.stdev(currentUser.initial_EAR)
 
             # Remove the drowsiness_value after adding once
-            if drowsiness_value:
-                drowsiness_value = -1
+            if currentUser.drowsiness_value:
+                currentUser.drowsiness_value = -1
 
-            if drowsiness_val_submitted == 1:
-                display_alert = 0
-                drowsiness_val_submitted = 0
+            if currentUser.drowsiness_val_submitted == 1:
+                currentUser.display_alert = 0
+                currentUser.drowsiness_val_submitted = 0
 
-            if Num_Frame > 200:
+            if currentUser.Num_Frame > 200:
                 # randomly sending 5 alerts
-                print("Num_Frame: ", Num_Frame)
-                if Num_Frame in random_alert_frames:
+                print("Num_Frame: ", currentUser.Num_Frame)
+                if currentUser.Num_Frame in currentUser.random_alert_frames:
                     print("================= Frame Matched ===================")
-                    print(Num_Frame)
-                    if drowsiness_val_submitted == 0:
-                        print("drowsiness_val_submitted: ", drowsiness_val_submitted)
-                        display_alert = 1
+                    print(currentUser.Num_Frame)
+                    if currentUser.drowsiness_val_submitted == 0:
+                        print("drowsiness_val_submitted: ", currentUser.drowsiness_val_submitted)
+                        currentUser.display_alert = 1
 
-            panda_EAR = pd.concat([panda_EAR, pd.DataFrame.from_records([{
+            currentUser.panda_EAR = pd.concat([currentUser.panda_EAR, pd.DataFrame.from_records([{
                 'Frame Number': EAR_data_returned[0][0], 'Average EAR': EAR_data_returned[0][1],
                 'Elapsed Time': EAR_data_returned[0][2],
                 'Response': EAR_data_returned[0][3], 'Actual Output': drowsiness_value}

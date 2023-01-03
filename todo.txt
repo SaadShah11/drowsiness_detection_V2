@@ -9,3 +9,7 @@ load the object from map according to the socket that is calling it
 run the landmark button with sockets 
 
 load the model globally then use in celery task
+
+Ask Sir Zahid:
+1): Load model globally in celery task
+2): cannot access project using https, project is running on localhost and nginx is used as https server
