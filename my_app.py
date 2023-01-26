@@ -6,6 +6,8 @@ from celery import Celery
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
 
+from engineio.payload import Payload
+
 import cv2
 import numpy as np
 import base64
@@ -42,6 +44,9 @@ socketio = SocketIO(app, cors_allowed_origins="*", message_queue='amqp://', asyn
 # celery.conf.update(app.config)
 
 celery = make_celery(app)
+
+# Payload.max_decode_packets = 50
+Payload.max_decode_packets = 500
 
 global rec, rec_frame, p, detector, predictor, display_alert, drowsiness_value, drowsiness_val_submitted, random_alert_frames, panda_EAR, EAR_data, initial_EAR, initial_mean, initial_sd, original_time, Num_Frame
 display_alert = 0
