@@ -37,7 +37,7 @@ app.config['CELERY_RESULT_BACKEND'] = 'rpc://'
 # Get latest port from redis and add in socketio
 # global port = 
 # socketio = SocketIO(app, cors_allowed_origins="*", message_queue='redis://')
-socketio = SocketIO(app, cors_allowed_origins="*", message_queue='amqp://', async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*", message_queue='amqp://', async_mode='threading', max_http_buffer_size=5000000, http_compression=True)
 # socketio = SocketIO(app, cors_allowed_origins="*")
 
 # celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
@@ -293,6 +293,10 @@ def image(data_image):
 
     # converting RGB to BGR, as opencv standards
     image = cv2.cvtColor(np.array(pimg), cv2.COLOR_RGB2BGR)
+
+    # if currentUser.rec:
+    #     currentUser.Num_Frame += 1
+    #     print(currentUser.Num_Frame)
 
     if currentUser.rec:
         # print("=================== REC is TRUE ===========================")
